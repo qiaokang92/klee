@@ -9,6 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "helper.h"
+
 #include "klee/Config/Version.h"
 #include "klee/ExecutionState.h"
 #include "klee/Expr.h"
@@ -1215,10 +1217,15 @@ int main(int argc, char **argv, char **envp) {
   std::string errorMsg;
   LLVMContext ctx;
   std::vector<std::unique_ptr<llvm::Module>> loadedModules;
+
+  // printing input file name (the .bc file)
+  klee_message("the input file name is: %s\n", InputFile.c_str());
+
   if (!klee::loadFile(InputFile, ctx, loadedModules, errorMsg)) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
                errorMsg.c_str());
   }
+
   // Load and link the whole files content. The assumption is that this is the
   // application under test.
   // Nothing gets removed in the first place.
@@ -1345,6 +1352,8 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = MakeConcreteSymbolic;
+
+  // Create a new KLEE hanlder
   KleeHandler *handler = new KleeHandler(pArgc, pArgv);
   Interpreter *interpreter =
     theInterpreter = Interpreter::create(ctx, IOpts, handler);
@@ -1361,6 +1370,7 @@ int main(int argc, char **argv, char **envp) {
 
   auto finalModule = interpreter->setModule(loadedModules, Opts);
   Function *mainFn = finalModule->getFunction(EntryPoint);
+  klee_message("entry function is %s", EntryPoint.c_str());
   if (!mainFn) {
     klee_error("Entry function '%s' not found in module.", EntryPoint.c_str());
   }
@@ -1372,12 +1382,17 @@ int main(int argc, char **argv, char **envp) {
   }
 
 
+  // ===================================
+  // ======= execution starts ==========
+  // ===================================
+
   auto startTime = std::time(nullptr);
   { // output clock info and start time
     std::stringstream startInfo;
     startInfo << time::getClockInfo()
               << "Started: "
-              << std::put_time(std::localtime(&startTime), "%Y-%m-%d %H:%M:%S") << '\n';
+              << std::put_time(std::localtime(&startTime), "%Y-%m-%d %H:%M:%S")
+              << '\n';
     handler->getInfoStream() << startInfo.str();
     handler->getInfoStream().flush();
   }
@@ -1477,6 +1492,10 @@ int main(int argc, char **argv, char **envp) {
       seeds.pop_back();
     }
   }
+
+  // ===================================
+  // ======== execution ends ===========
+  // ===================================
 
   auto endTime = std::time(nullptr);
   { // output end and elapsed time
