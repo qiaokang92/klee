@@ -1,26 +1,64 @@
-KLEE Symbolic Virtual Machine
-=============================
+# Using KLEE for computing per-EC prob
 
-[![Build Status](https://travis-ci.org/klee/klee.svg?branch=master)](https://travis-ci.org/klee/klee)
-[![Coverage](https://codecov.io/gh/klee/klee/branch/master/graph/badge.svg)](https://codecov.io/gh/klee/klee)
 
-`KLEE` is a symbolic virtual machine built on top of the LLVM compiler
-infrastructure. Currently, there are two primary components:
+## Install Klee
 
-  1. The core symbolic virtual machine engine; this is responsible for
-     executing LLVM bitcode modules with support for symbolic
-     values. This is comprised of the code in lib/.
+Klee can be easily installed, follow instruction [here](http://klee.github.io/).
+```
+mkdir build
+cd build
+cmake -DENABLE_SOLVER_STP=ON -DLLVM_CONFIG_BINARY=/usr/bin/llvm-config-6.0 -DENABLE_UNIT_TESTS=OFF -DENABLE_SYSTEM_TESTS=OFF ..
+make
+```
 
-  2. A POSIX/Linux emulation layer oriented towards supporting uClibc,
-     with additional support for making parts of the operating system
-     environment symbolic.
+## The simple Blink example
 
-Additionally, there is a simple library for replaying computed inputs
-on native code (for closed programs). There is also a more complicated
-infrastructure for replaying the inputs generated for the POSIX/Linux
-emulation layer, which handles running native programs in an
-environment that matches a computed test input, including setting up
-files, pipes, environment variables, and passing command line
-arguments.
+`blink.c` is a very simple version of Blink, it uses a small hash table to maintain
+per-connection state (normal or retransmitting). Once it detects > threshold
+flows are retransmitting, it raises an alarm and reset all state.
 
-For further information, see the [webpage](http://klee.github.io/).
+To run this example, first install klee and run:
+```
+# compile
+clang-6.0 -I <path_to_klee_include_folder> -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone blink.c
+# or
+clang-6.0 -I ../../include -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone blink.c
+
+# symbex
+klee --use-query-log=all:kquery --write-kqueries --write-cvcs --write-smt2s blink.bc
+```
+
+Klee can figure out all possible paths - either raising alarms or not.
+
+Doing: hack Klee and integrate LattE to compute per-path prob.
+
+TODO: use ASSERT-P4's translation tool
+
+## Hacking Blink to support per-path prob
+
+`test_prob.c` is used for testing probablity symbex.
+
+## Questions and Problems
+
+1) This simple Blink scales very poorly - when pkt num > 5 it cannot finish within
+mintues. One possible reason is reversing `hash` is too time-consuming.
+
+TODO: integrate havocing? CASTAN's code is available in https://github.com/nal-epfl/castan.
+
+By reading the ISSTA paper, their technique also does not scale to >4 iterations.
+This seems to suggest that probabilistic symbex suffers from state exploision
+issue!
+
+TODO: Can we develop an approximate method for computing probabilities?
+TODO: See ASE'14 paper: exact and approximate Prob. SE.
+TODO: Also see the ICSE'16 paper (perfplotter).
+
+2) In assence, hash tables are just an array, and to access this array the **index**
+has to be symbolic (derived from flow ID), i.e., access `a[sym_index]`, where `a`
+is an array, and `sym_index` is `hash(flow_id)`.
+How does the SEE handle this? The memory location is not deterministic!
+
+TODO: The KLEE paper doesn't talk about this, maybe read the EXE paper.
+
+TODO: If this is some special kinds of contraints, we don know if LattE can
+handle it.
